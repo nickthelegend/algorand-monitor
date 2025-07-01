@@ -149,7 +149,7 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
               {
                 name: `asset-${monitor.assetId}`,
                 filter: {
-                  type: algosdk.TransactionType.axfer,
+                  type: "axfer",
                   assetId: BigInt(monitor.assetId),
                   minAmount: BigInt(monitor.minAmount * 1_000_000), // Convert to microunits
                 },
@@ -169,23 +169,17 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
         )
 
         subscriber.on(`asset-${monitor.assetId}`, (transfer: any) => {
-          console.log(
-            `${transfer.sender} sent ${transfer.assetTransferTransaction?.receiver} ${monitor.name} $${Number(
-              (transfer.assetTransferTransaction?.amount ?? 0n) / 1_000_000n,
-            ).toFixed(2)} in transaction ${transfer.id}`,
-          )
-
+          console.log("Asset transfer received:", transfer);
           const newTransfer: AssetTransfer = {
             id: transfer.id,
             sender: transfer.sender,
             receiver: transfer.assetTransferTransaction?.receiver || "",
             amount: transfer.assetTransferTransaction?.amount || 0n,
-            timestamp: new Date(),
+            timestamp: transfer.roundTime ? new Date(transfer.roundTime * 1000) : new Date(),
             txnId: transfer.id,
             assetId: BigInt(monitor.assetId),
             note: transfer.note ? new TextDecoder().decode(transfer.note) : undefined,
-          }
-
+          };
           setMonitors((prev) =>
             prev.map((m) =>
               m.id === monitor.id
@@ -196,7 +190,7 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
                   }
                 : m,
             ),
-          )
+          );
         })
 
         subscriber.onError((e: any) => {
@@ -412,45 +406,45 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
                     ) : (
                       <ScrollArea className="h-64">
                         <div className="space-y-3">
-                          {monitor.transfers.map((transfer) => (
-                            <div key={transfer.id} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <Badge variant="default">Transfer</Badge>
-                                <span className="text-sm text-slate-500">
-                                  {transfer.timestamp.toLocaleTimeString()}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <p className="text-slate-600 dark:text-slate-400">From:</p>
-                                  <p className="font-mono">{formatAddress(transfer.sender)}</p>
+                          {monitor.transfers
+                            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                            .map((transfer) => (
+                              <div key={transfer.id} className="border rounded-lg p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Badge variant="default">Transfer</Badge>
+                                  <span className="text-sm text-slate-500">{transfer.timestamp.toLocaleTimeString()}</span>
                                 </div>
-                                <div>
-                                  <p className="text-slate-600 dark:text-slate-400">To:</p>
-                                  <p className="font-mono">{formatAddress(transfer.receiver)}</p>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-slate-600 dark:text-slate-400">From:</p>
+                                    <p className="font-mono">{formatAddress(transfer.sender)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-600 dark:text-slate-400">To:</p>
+                                    <p className="font-mono">{formatAddress(transfer.receiver)}</p>
+                                  </div>
                                 </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-lg">
+                                    {formatAmount(transfer.amount)} {monitor.name}
+                                  </span>
+                                  <Button size="sm" variant="ghost" asChild>
+                                    <a
+                                      href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${transfer.txnId}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  </Button>
+                                </div>
+                                {transfer.note && (
+                                  <p className="text-sm text-slate-600 dark:text-slate-400 italic">
+                                    Note: {transfer.note}
+                                  </p>
+                                )}
                               </div>
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold text-lg">
-                                  {formatAmount(transfer.amount)} {monitor.name}
-                                </span>
-                                <Button size="sm" variant="ghost" asChild>
-                                  <a
-                                    href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${transfer.txnId}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
-                                </Button>
-                              </div>
-                              {transfer.note && (
-                                <p className="text-sm text-slate-600 dark:text-slate-400 italic">
-                                  Note: {transfer.note}
-                                </p>
-                              )}
-                            </div>
-                          ))}
+                            ))}
                         </div>
                       </ScrollArea>
                     )}

@@ -126,7 +126,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
           {
             name: "app-call-fallback",
             filter: {
-              type: algosdk.TransactionType.appl,
+              type: "appl",
               appId: BigInt(monitor.appId),
             },
           },
@@ -151,23 +151,21 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
 
         subscriber.onBatch("app-call-fallback", async (events) => {
           events.forEach((event) => {
-            console.log(`App call to ${monitor.appId}:`, event)
-
+            console.log("Contract event received:", event);
             const newEvent: ContractEvent = {
               id: event.id,
               eventName: "app-call",
               methodSignature: "fallback",
               sender: event.sender,
-              timestamp: new Date(),
+              timestamp: event.roundTime ? new Date(event.roundTime * 1000) : new Date(),
               args: event.applicationTransaction?.applicationArgs || [],
               txnId: event.id,
               appArgs: event.applicationTransaction?.applicationArgs,
-            }
-
+            };
             setMonitors((prev) =>
               prev.map((m) => (m.id === monitor.id ? { ...m, events: [newEvent, ...m.events.slice(0, 49)] } : m)),
-            )
-          })
+            );
+          });
         })
 
         subscriber.onError((e: any) => {
@@ -366,46 +364,48 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
                       ) : (
                         <ScrollArea className="h-64">
                           <div className="space-y-3">
-                            {monitor.events.map((event) => (
-                              <div key={event.id} className="border rounded-lg p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Badge variant="default">{event.eventName}</Badge>
-                                  <span className="text-sm text-slate-500">{event.timestamp.toLocaleTimeString()}</span>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-sm">
-                                    <span className="text-slate-600 dark:text-slate-400">Method:</span>
-                                    <code className="ml-2 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">
-                                      {event.methodSignature}
-                                    </code>
-                                  </p>
-                                  <p className="text-sm">
-                                    <span className="text-slate-600 dark:text-slate-400">Sender:</span>
-                                    <span className="ml-2 font-mono text-xs">{formatAddress(event.sender)}</span>
-                                  </p>
-                                  {event.appArgs && event.appArgs.length > 0 && (
+                            {monitor.events
+                              .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                              .map((event) => (
+                                <div key={event.id} className="border rounded-lg p-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <Badge variant="default">{event.eventName}</Badge>
+                                    <span className="text-sm text-slate-500">{event.timestamp.toLocaleTimeString()}</span>
+                                  </div>
+                                  <div className="space-y-1">
                                     <p className="text-sm">
-                                      <span className="text-slate-600 dark:text-slate-400">Args:</span>
+                                      <span className="text-slate-600 dark:text-slate-400">Method:</span>
                                       <code className="ml-2 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">
-                                        [{formatArgs(event.appArgs).join(", ")}]
+                                        {event.methodSignature}
                                       </code>
                                     </p>
-                                  )}
+                                    <p className="text-sm">
+                                      <span className="text-slate-600 dark:text-slate-400">Sender:</span>
+                                      <span className="ml-2 font-mono text-xs">{formatAddress(event.sender)}</span>
+                                    </p>
+                                    {event.appArgs && event.appArgs.length > 0 && (
+                                      <p className="text-sm">
+                                        <span className="text-slate-600 dark:text-slate-400">Args:</span>
+                                        <code className="ml-2 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">
+                                          [{formatArgs(event.appArgs).join(", ")}]
+                                        </code>
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500 font-mono">{event.txnId}</span>
+                                    <Button size="sm" variant="ghost" asChild>
+                                      <a
+                                        href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${event.txnId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    </Button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs text-slate-500 font-mono">{event.txnId}</span>
-                                  <Button size="sm" variant="ghost" asChild>
-                                    <a
-                                      href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${event.txnId}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
+                              ))}
                           </div>
                         </ScrollArea>
                       )}
