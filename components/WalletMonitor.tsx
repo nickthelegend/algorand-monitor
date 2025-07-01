@@ -151,15 +151,15 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
           const newTransaction: Transaction = {
             id: transaction.id,
             type:
-              transaction.type === "pay"
+              transaction.txType === "pay"
                 ? "Payment"
-                : transaction.type === "axfer"
+                : transaction.txType === "axfer"
                   ? "Asset Transfer"
                   : transaction.type,
             amount: transaction.paymentTransaction?.amount || transaction.assetTransferTransaction?.amount || 0n,
             sender: transaction.sender,
             receiver: transaction.paymentTransaction?.receiver || transaction.assetTransferTransaction?.receiver || "",
-            timestamp: new Date(transaction.roundTime),
+            timestamp: new Date(transaction.roundTime  * 1000),
             fee: transaction.fee || 0n,
             assetId: transaction.assetTransferTransaction?.assetId,
           }
@@ -346,36 +346,49 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                     ) : (
                       <ScrollArea className="h-64">
                         <div className="space-y-3">
-                          {monitor.transactions.map((tx) => (
-                            <div key={tx.id} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <Badge variant="outline">{tx.type}</Badge>
-                                <span className="text-sm text-slate-500">{tx.timestamp.toLocaleTimeString()}</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <p className="text-slate-600 dark:text-slate-400">From:</p>
-                                  <p className="font-mono">{formatAddress(tx.sender)}</p>
+                          {monitor.transactions
+                            .filter((tx) => tx.amount !== 0n)
+                            .map((tx) => (
+                              <div key={tx.id} className="border rounded-lg p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Badge variant="outline">{tx.type}</Badge>
+                                  <span className="text-sm text-slate-500">{tx.timestamp.toString()}</span>
                                 </div>
-                                <div>
-                                  <p className="text-slate-600 dark:text-slate-400">To:</p>
-                                  <p className="font-mono">{formatAddress(tx.receiver)}</p>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-slate-600 dark:text-slate-400">From:</p>
+                                    <p className="font-mono">{formatAddress(tx.sender)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-600 dark:text-slate-400">To:</p>
+                                    <p className="font-mono">{formatAddress(tx.receiver)}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold">{formatAmount(tx.amount, tx.assetId)}</span>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="ghost" asChild>
+                                      <a
+                                        href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${tx.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    </Button>
+                                    <Button size="sm" variant="ghost" asChild>
+                                      <a
+                                        href={`https://lora.algokit.io/testnet/transaction/${tx.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        Lora
+                                      </a>
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold">{formatAmount(tx.amount, tx.assetId)}</span>
-                                <Button size="sm" variant="ghost" asChild>
-                                  <a
-                                    href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${tx.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
+                            ))}
                         </div>
                       </ScrollArea>
                     )}
