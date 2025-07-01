@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { AlertCircle, Play, Square, Trash2, ExternalLink, TrendingUp } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import algosdk from "algosdk"
+import TransactionType = algosdk.TransactionType;
 
 interface AssetMonitorProps {
   network: "mainnet" | "testnet"
@@ -149,13 +150,14 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
               {
                 name: `asset-${monitor.assetId}`,
                 filter: {
-                  type: "axfer",
+                  type: TransactionType.appl,
                   assetId: BigInt(monitor.assetId),
                   minAmount: BigInt(monitor.minAmount * 1_000_000), // Convert to microunits
                 },
               },
             ],
             waitForBlockWhenAtTip: true,
+            frequencyInSeconds: 30,
             syncBehaviour: "skip-sync-newest",
             watermarkPersistence: {
               get: async () => watermarksRef.current.get(monitor.id) || 0n,
