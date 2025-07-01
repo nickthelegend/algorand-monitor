@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AlertCircle, Play, Square, Trash2, ExternalLink, TrendingUp } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import algosdk from "algosdk"
 
 interface AssetMonitorProps {
   network: "mainnet" | "testnet"
@@ -116,27 +117,27 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
       try {
         // Dynamic import to avoid SSR issues
         const { AlgorandClient } = await import("@algorandfoundation/algokit-utils")
-        const { AlgorandSubscriber, TransactionType } = await import("@algorandfoundation/algokit-subscriber")
+        const { AlgorandSubscriber, } = await import("@algorandfoundation/algokit-subscriber")
 
         // Initialize Algorand client based on network
         const algorand =
           network === "mainnet"
-            ? AlgorandClient.fromClients({
-                algod: {
+            ? AlgorandClient.fromConfig({
+                algodConfig: {
                   server: "https://mainnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://mainnet-idx.algonode.cloud",
                   token: "",
                 },
               })
-            : AlgorandClient.fromClients({
-                algod: {
+            : AlgorandClient.fromConfig({
+                algodConfig: {
                   server: "https://testnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://testnet-idx.algonode.cloud",
                   token: "",
                 },
@@ -144,11 +145,11 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
 
         const subscriber = new AlgorandSubscriber(
           {
-            events: [
+            filters: [
               {
-                eventName: `asset-${monitor.assetId}`,
+                name: `asset-${monitor.assetId}`,
                 filter: {
-                  type: TransactionType.axfer,
+                  type: algosdk.TransactionType.axfer,
                   assetId: BigInt(monitor.assetId),
                   minAmount: BigInt(monitor.minAmount * 1_000_000), // Convert to microunits
                 },

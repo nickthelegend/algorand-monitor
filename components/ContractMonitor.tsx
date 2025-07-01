@@ -43,7 +43,6 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
   const [monitors, setMonitors] = useState<ContractMonitorConfig[]>([])
   const [newAppId, setNewAppId] = useState("")
   const [newName, setNewName] = useState("")
-  const [newMethods, setNewMethods] = useState("")
   const [frequency, setFrequency] = useState("5")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -55,20 +54,15 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
   }, [monitors.length, monitors.map((m) => m.isActive).join(","), onMonitorCountChange])
 
   const addMonitor = async () => {
-    if (!newAppId.trim() || !newName.trim() || !newMethods.trim()) return
+    if (!newAppId.trim() || !newName.trim()) return
 
     setIsLoading(true)
-
-    const methodSignatures = newMethods
-      .split("\n")
-      .map((m) => m.trim())
-      .filter((m) => m.length > 0)
 
     const newMonitor: ContractMonitorConfig = {
       id: Date.now().toString(),
       appId: newAppId.trim(),
       name: newName.trim(),
-      methodSignatures,
+      methodSignatures: [],
       isActive: false,
       events: [],
       frequencyInSeconds: Number.parseInt(frequency),
@@ -77,7 +71,6 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
     setMonitors((prev) => [...prev, newMonitor])
     setNewAppId("")
     setNewName("")
-    setNewMethods("")
     setIsLoading(false)
   }
 
@@ -104,48 +97,40 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
     async (monitor: ContractMonitorConfig) => {
       try {
         const { AlgorandClient } = await import("@algorandfoundation/algokit-utils")
-        const { AlgorandSubscriber, TransactionType } = await import("@algorandfoundation/algokit-subscriber")
-
+        const { AlgorandSubscriber } = await import("@algorandfoundation/algokit-subscriber")
+        const algosdk  = await import("algosdk")
         const algorand =
           network === "mainnet"
-            ? AlgorandClient.fromClients({
-                algod: {
+            ? AlgorandClient.fromConfig({
+                algodConfig: {
                   server: "https://mainnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://mainnet-idx.algonode.cloud",
                   token: "",
                 },
               })
-            : AlgorandClient.fromClients({
-                algod: {
+            : AlgorandClient.fromConfig({
+                algodConfig: {
                   server: "https://testnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://testnet-idx.algonode.cloud",
                   token: "",
                 },
               })
 
-        const filters = monitor.methodSignatures.map((signature, index) => ({
-          name: `method-${index}`,
-          filter: {
-            type: TransactionType.appl,
-            appId: BigInt(monitor.appId),
-            methodSignature: signature,
+        const filters = [
+          {
+            name: "app-call-fallback",
+            filter: {
+              type: algosdk.TransactionType.appl,
+              appId: BigInt(monitor.appId),
+            },
           },
-        }))
-
-        // Add fallback filter for any app calls to this app ID
-        filters.push({
-          name: "app-call-fallback",
-          filter: {
-            type: TransactionType.appl,
-            appId: BigInt(monitor.appId),
-          },
-        })
+        ]
 
         const subscriber = new AlgorandSubscriber(
           {
@@ -164,30 +149,6 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
           algorand.client.indexer,
         )
 
-        // Handle each method signature
-        monitor.methodSignatures.forEach((signature, index) => {
-          subscriber.onBatch(`method-${index}`, async (events) => {
-            events.forEach((event) => {
-              console.log(`Contract method ${signature} called:`, event)
-
-              const newEvent: ContractEvent = {
-                id: event.id,
-                eventName: signature.split("(")[0],
-                methodSignature: signature,
-                sender: event.sender,
-                timestamp: new Date(),
-                args: event.applicationTransaction?.appArgs || [],
-                txnId: event.id,
-                appArgs: event.applicationTransaction?.appArgs,
-              }
-
-              setMonitors((prev) =>
-                prev.map((m) => (m.id === monitor.id ? { ...m, events: [newEvent, ...m.events.slice(0, 49)] } : m)),
-              )
-            })
-          })
-        })
-
         subscriber.onBatch("app-call-fallback", async (events) => {
           events.forEach((event) => {
             console.log(`App call to ${monitor.appId}:`, event)
@@ -198,9 +159,9 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
               methodSignature: "fallback",
               sender: event.sender,
               timestamp: new Date(),
-              args: event.applicationTransaction?.appArgs || [],
+              args: event.applicationTransaction?.applicationArgs || [],
               txnId: event.id,
-              appArgs: event.applicationTransaction?.appArgs,
+              appArgs: event.applicationTransaction?.applicationArgs,
             }
 
             setMonitors((prev) =>
@@ -308,17 +269,6 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="method-signatures">Method Signatures</Label>
-            <Textarea
-              id="method-signatures"
-              placeholder={`Enter method signatures (one per line):\nturnOn()void\nturnOff()void\nsetValue(uint64)void`}
-              value={newMethods}
-              onChange={(e) => setNewMethods(e.target.value)}
-              rows={4}
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="frequency">Polling Frequency</Label>
             <Select value={frequency} onValueChange={setFrequency}>
               <SelectTrigger>
@@ -336,7 +286,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
 
           <Button
             onClick={addMonitor}
-            disabled={!newAppId.trim() || !newName.trim() || !newMethods.trim() || isLoading}
+            disabled={!newAppId.trim() || !newName.trim() || isLoading}
             className="w-full"
           >
             Add Contract Monitor
@@ -401,17 +351,6 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
 
               <CardContent>
                 <div className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold mb-2">Monitored Methods</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {monitor.methodSignatures.map((method, index) => (
-                        <Badge key={index} variant="outline" className="font-mono text-xs">
-                          {method}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
                   {monitor.isActive && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">

@@ -348,6 +348,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                         <div className="space-y-3">
                           {monitor.transactions
                             .filter((tx) => tx.amount !== 0n)
+                            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
                             .map((tx) => (
                               <div key={tx.id} className="border rounded-lg p-3 space-y-2">
                                 <div className="flex items-center justify-between">
