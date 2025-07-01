@@ -94,22 +94,22 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
 
         const algorand =
           network === "mainnet"
-            ? AlgorandClient.fromClients({
-                algod: {
+            ? AlgorandClient.fromConfig({
+              algodConfig: {
                   server: "https://mainnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://mainnet-idx.algonode.cloud",
                   token: "",
                 },
               })
-            : AlgorandClient.fromClients({
-                algod: {
+            : AlgorandClient.fromConfig({
+              algodConfig: {
                   server: "https://testnet-api.algonode.cloud",
                   token: "",
                 },
-                indexer: {
+                indexerConfig: {
                   server: "https://testnet-idx.algonode.cloud",
                   token: "",
                 },
@@ -117,15 +117,15 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
 
         const subscriber = new AlgorandSubscriber(
           {
-            events: [
+            filters: [
               {
-                eventName: "wallet-sent",
+                name: "wallet-sent",
                 filter: {
                   sender: monitor.address,
                 },
               },
               {
-                eventName: "wallet-received",
+                name: "wallet-received",
                 filter: {
                   receiver: monitor.address,
                 },
@@ -159,7 +159,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
             amount: transaction.paymentTransaction?.amount || transaction.assetTransferTransaction?.amount || 0n,
             sender: transaction.sender,
             receiver: transaction.paymentTransaction?.receiver || transaction.assetTransferTransaction?.receiver || "",
-            timestamp: new Date(),
+            timestamp: new Date(transaction.roundTime),
             fee: transaction.fee || 0n,
             assetId: transaction.assetTransferTransaction?.assetId,
           }
