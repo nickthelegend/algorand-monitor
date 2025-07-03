@@ -100,22 +100,24 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
           .afterTime(monitorStartTime.toISOString())
           .do()
 
-        const newTransactions: Transaction[] = response.transactions.map((tx: any) => ({
-          id: tx.id,
-          type:
-            tx["tx-type"] === "pay"
-              ? "Payment"
-              : tx["tx-type"] === "axfer"
+        const newTransactions: Transaction[] = response.transactions.map((tx: any) => {
+          const txDetails = tx["payment-transaction"] || tx["asset-transfer-transaction"] || {}
+          return {
+            id: tx.id,
+            type:
+              tx["tx-type"] === "pay"
+                ? "Payment"
+                : tx["tx-type"] === "axfer"
                 ? "Asset Transfer"
                 : tx["tx-type"],
-          amount: tx["payment-transaction"]?.amount || tx["asset-transfer-transaction"]?.amount || 0n,
-          sender: tx.sender,
-          receiver:
-            tx["payment-transaction"]?.receiver || tx["asset-transfer-transaction"]?.receiver || "",
-          timestamp: new Date(tx["round-time"] * 1000),
-          fee: tx.fee || 0n,
-          assetId: tx["asset-transfer-transaction"]?.["asset-id"],
-        }))
+            amount: txDetails.amount || 0n,
+            sender: tx.sender,
+            receiver: txDetails.receiver || "",
+            timestamp: tx["round-time"] ? new Date(tx["round-time"] * 1000) : new Date(0),
+            fee: tx.fee || 0n,
+            assetId: tx["asset-transfer-transaction"]?.["asset-id"],
+          }
+        })
 
         if (newTransactions.length > 0) {
           setMonitors((prev) =>
