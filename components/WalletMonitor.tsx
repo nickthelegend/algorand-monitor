@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AlertCircle, Play, Square, Trash2, ExternalLink } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlgorandClient } from "@algorandfoundation/algokit-utils"
 
 interface WalletMonitorProps {
   network: "mainnet" | "testnet"
@@ -21,7 +22,7 @@ interface WalletMonitorConfig {
   name: string
   isActive: boolean
   transactions: Transaction[]
-  subscriber?: any
+  startTime?: Date
 }
 
 interface Transaction {
@@ -40,13 +41,12 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
   const [newAddress, setNewAddress] = useState("")
   const [newName, setNewName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-
-  const watermarksRef = useRef<Map<string, bigint>>(new Map())
+  const intervalIdsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   useEffect(() => {
     const activeCount = monitors.filter((m) => m.isActive).length
     onMonitorCountChange(activeCount)
-  }, [monitors.length, monitors.map((m) => m.isActive).join(","), onMonitorCountChange])
+  }, [monitors, onMonitorCountChange])
 
   const addMonitor = async () => {
     if (!newAddress.trim() || !newName.trim()) return
@@ -67,174 +67,127 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
     setIsLoading(false)
   }
 
-  const toggleMonitor = async (id: string) => {
+  const startWalletMonitoring = async (monitor: WalletMonitorConfig) => {
+    const algorand =
+      network === "mainnet"
+        ? AlgorandClient.fromConfig({
+            algodConfig: {
+              server: "https://mainnet-api.algonode.cloud",
+              token: "",
+            },
+            indexerConfig: {
+              server: "https://mainnet-idx.algonode.cloud",
+              token: "",
+            },
+          })
+        : AlgorandClient.fromConfig({
+            algodConfig: {
+              server: "https://testnet-api.algonode.cloud",
+              token: "",
+            },
+            indexerConfig: {
+              server: "https://testnet-idx.algonode.cloud",
+              token: "",
+            },
+          })
+
+    const fetchTransactions = async () => {
+      try {
+        const startTime = monitor.startTime || new Date()
+        const response = await algorand.client.indexer
+          .lookupAccountTransactions(monitor.address)
+          .afterTime(startTime.toISOString())
+          .do()
+
+        const newTransactions: Transaction[] = response.transactions.map((tx: any) => ({
+          id: tx.id,
+          type:
+            tx["tx-type"] === "pay"
+              ? "Payment"
+              : tx["tx-type"] === "axfer"
+                ? "Asset Transfer"
+                : tx["tx-type"],
+          amount: tx["payment-transaction"]?.amount || tx["asset-transfer-transaction"]?.amount || 0n,
+          sender: tx.sender,
+          receiver:
+            tx["payment-transaction"]?.receiver || tx["asset-transfer-transaction"]?.receiver || "",
+          timestamp: new Date(tx["round-time"] * 1000),
+          fee: tx.fee || 0n,
+          assetId: tx["asset-transfer-transaction"]?.["asset-id"],
+        }))
+
+        setMonitors((prev) =>
+          prev.map((m) =>
+            m.id === monitor.id
+              ? { ...m, transactions: [...newTransactions, ...m.transactions].slice(0, 50) }
+              : m,
+          ),
+        )
+      } catch (error) {
+        console.error(`Failed to fetch transactions for ${monitor.name}:`, error)
+      }
+    }
+
+    fetchTransactions()
+    const intervalId = setInterval(fetchTransactions, 120000) // 2 minutes
+    intervalIdsRef.current.set(monitor.id, intervalId)
+
     setMonitors((prev) =>
-      prev.map((monitor) => {
-        if (monitor.id === id) {
-          const updatedMonitor = { ...monitor, isActive: !monitor.isActive }
-
-          if (updatedMonitor.isActive) {
-            startWalletMonitoring(updatedMonitor)
-          } else {
-            stopWalletMonitoring(updatedMonitor)
-          }
-
-          return updatedMonitor
-        }
-        return monitor
-      }),
+      prev.map((m) => (m.id === monitor.id ? { ...m, isActive: true, startTime: new Date() } : m)),
     )
+
+    console.log(`Started monitoring wallet ${monitor.name} (${monitor.address}) on ${network}`)
   }
 
-  const startWalletMonitoring = useCallback(
-    async (monitor: WalletMonitorConfig) => {
-      try {
-        const { AlgorandClient } = await import("@algorandfoundation/algokit-utils")
-        const { AlgorandSubscriber } = await import("@algorandfoundation/algokit-subscriber")
-
-        const algorand =
-          network === "mainnet"
-            ? AlgorandClient.fromConfig({
-              algodConfig: {
-                  server: "https://mainnet-api.algonode.cloud",
-                  token: "",
-                },
-                indexerConfig: {
-                  server: "https://mainnet-idx.algonode.cloud",
-                  token: "",
-                },
-              })
-            : AlgorandClient.fromConfig({
-              algodConfig: {
-                  server: "https://testnet-api.algonode.cloud",
-                  token: "",
-                },
-                indexerConfig: {
-                  server: "https://testnet-idx.algonode.cloud",
-                  token: "",
-                },
-              })
-
-        const subscriber = new AlgorandSubscriber(
-          {
-            filters: [
-              {
-                name: "wallet-sent",
-                filter: {
-                  sender: monitor.address,
-                },
-              },
-              {
-                name: "wallet-received",
-                filter: {
-                  receiver: monitor.address,
-                },
-              },
-            ],
-            frequencyInSeconds: network === "mainnet" ? 10 : 5,
-            maxRoundsToSync: 100,
-            syncBehaviour: "catchup-with-indexer",
-            watermarkPersistence: {
-              get: async () => watermarksRef.current.get(monitor.id) || 0n,
-              set: async (newWatermark) => {
-                watermarksRef.current.set(monitor.id, newWatermark)
-              },
-            },
-          },
-          algorand.client.algod,
-          algorand.client.indexer,
-        )
-
-        const handleTransaction = (transaction: any, direction: "sent" | "received") => {
-          console.log(`Wallet ${direction}:`, transaction)
-
-          const newTransaction: Transaction = {
-            id: transaction.id,
-            type:
-              transaction.txType === "pay"
-                ? "Payment"
-                : transaction.txType === "axfer"
-                  ? "Asset Transfer"
-                  : transaction.type,
-            amount: transaction.paymentTransaction?.amount || transaction.assetTransferTransaction?.amount || 0n,
-            sender: transaction.sender,
-            receiver: transaction.paymentTransaction?.receiver || transaction.assetTransferTransaction?.receiver || "",
-            timestamp: new Date(transaction.roundTime  * 1000),
-            fee: transaction.fee || 0n,
-            assetId: transaction.assetTransferTransaction?.assetId,
-          }
-
-          setMonitors((prev) =>
-            prev.map((m) =>
-              m.id === monitor.id ? { ...m, transactions: [newTransaction, ...m.transactions.slice(0, 49)] } : m,
-            ),
-          )
-        }
-
-        subscriber.onBatch("wallet-sent", async (events) => {
-          events.forEach((event) => handleTransaction(event, "sent"))
-        })
-
-        subscriber.onBatch("wallet-received", async (events) => {
-          events.forEach((event) => handleTransaction(event, "received"))
-        })
-
-        subscriber.onError((e: any) => {
-          console.error(`Wallet monitor error for ${monitor.name}:`, e)
-        })
-
-        await subscriber.start()
-
-        setMonitors((prev) => prev.map((m) => (m.id === monitor.id ? { ...m, subscriber } : m)))
-
-        console.log(`Started monitoring wallet ${monitor.name} (${monitor.address}) on ${network}`)
-      } catch (error) {
-        console.error("Failed to start wallet monitoring:", error)
-      }
-    },
-    [network],
-  )
-
-  const stopWalletMonitoring = useCallback((monitor: WalletMonitorConfig) => {
-    if (monitor.subscriber) {
-      monitor.subscriber.stop()
-      console.log(`Stopped monitoring ${monitor.name}`)
+  const stopWalletMonitoring = (monitor: WalletMonitorConfig) => {
+    const intervalId = intervalIdsRef.current.get(monitor.id)
+    if (intervalId) {
+      clearInterval(intervalId)
+      intervalIdsRef.current.delete(monitor.id)
     }
-  }, [])
+    setMonitors((prev) => prev.map((m) => (m.id === monitor.id ? { ...m, isActive: false } : m)))
+    console.log(`Stopped monitoring ${monitor.name}`)
+  }
 
-  const removeMonitor = useCallback(
-    (id: string) => {
-      const monitor = monitors.find((m) => m.id === id)
-      if (monitor?.subscriber) {
-        monitor.subscriber.stop()
-      }
-      watermarksRef.current.delete(id)
-      setMonitors((prev) => prev.filter((m) => m.id !== id))
-    },
-    [monitors],
-  )
+  const toggleMonitor = async (id: string) => {
+    const monitor = monitors.find((m) => m.id === id)
+    if (!monitor) return
+
+    if (monitor.isActive) {
+      stopWalletMonitoring(monitor)
+    } else {
+      startWalletMonitoring(monitor)
+    }
+  }
+
+  const removeMonitor = useCallback((id: string) => {
+    const intervalId = intervalIdsRef.current.get(id)
+    if (intervalId) {
+      clearInterval(intervalId)
+      intervalIdsRef.current.delete(id)
+    }
+    setMonitors((prev) => prev.filter((m) => m.id !== id))
+  }, [])
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-6)}`
   }
 
   const formatAmount = (amount: bigint, assetId?: bigint) => {
-    if (assetId) {
-      return (Number(amount) / 1_000_000).toFixed(6) // Assume 6 decimals for assets
-    }
-    return (Number(amount) / 1_000_000).toFixed(6) + " ALGO"
+    // This is a simplification. In a real app, you'd want to fetch asset decimals.
+    const decimals = assetId ? 6 : 6
+    const divisor = 10 ** decimals
+    return (Number(amount) / divisor).toFixed(decimals) + (assetId ? "" : " ALGO")
   }
 
   useEffect(() => {
     return () => {
-      monitors.forEach((monitor) => {
-        if (monitor.subscriber) {
-          monitor.subscriber.stop()
-        }
+      // Cleanup on unmount
+      intervalIdsRef.current.forEach((intervalId) => {
+        clearInterval(intervalId)
       })
-      watermarksRef.current.clear()
     }
-  }, [monitors])
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -353,7 +306,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                               <div key={tx.id} className="border rounded-lg p-3 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Badge variant="outline">{tx.type}</Badge>
-                                  <span className="text-sm text-slate-500">{tx.timestamp.toString()}</span>
+                                  <span className="text-sm text-slate-500">{tx.timestamp.toLocaleString()}</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                   <div>
