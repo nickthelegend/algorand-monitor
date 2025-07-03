@@ -68,6 +68,8 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
   }
 
   const startWalletMonitoring = async (monitor: WalletMonitorConfig) => {
+    const monitorStartTime = new Date()
+
     const algorand =
       network === "mainnet"
         ? AlgorandClient.fromConfig({
@@ -93,10 +95,9 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
 
     const fetchTransactions = async () => {
       try {
-        const startTime = monitor.startTime || new Date()
         const response = await algorand.client.indexer
           .lookupAccountTransactions(monitor.address)
-          .afterTime(startTime.toISOString())
+          .afterTime(monitorStartTime.toISOString())
           .do()
 
         const newTransactions: Transaction[] = response.transactions.map((tx: any) => ({
@@ -116,24 +117,35 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
           assetId: tx["asset-transfer-transaction"]?.["asset-id"],
         }))
 
-        setMonitors((prev) =>
-          prev.map((m) =>
-            m.id === monitor.id
-              ? { ...m, transactions: [...newTransactions, ...m.transactions].slice(0, 50) }
-              : m,
-          ),
-        )
+        if (newTransactions.length > 0) {
+          setMonitors((prev) =>
+            prev.map((m) => {
+              if (m.id === monitor.id) {
+                const existingTxIds = new Set(m.transactions.map((t) => t.id))
+                const uniqueNewTransactions = newTransactions.filter((t) => !existingTxIds.has(t.id))
+
+                if (uniqueNewTransactions.length === 0) return m
+
+                return {
+                  ...m,
+                  transactions: [...uniqueNewTransactions, ...m.transactions].slice(0, 50),
+                }
+              }
+              return m
+            }),
+          )
+        }
       } catch (error) {
         console.error(`Failed to fetch transactions for ${monitor.name}:`, error)
       }
     }
 
     fetchTransactions()
-    const intervalId = setInterval(fetchTransactions, 120000) // 2 minutes
+    const intervalId = setInterval(fetchTransactions, 6000) // 2 minutes
     intervalIdsRef.current.set(monitor.id, intervalId)
 
     setMonitors((prev) =>
-      prev.map((m) => (m.id === monitor.id ? { ...m, isActive: true, startTime: new Date() } : m)),
+      prev.map((m) => (m.id === monitor.id ? { ...m, isActive: true, startTime: monitorStartTime } : m)),
     )
 
     console.log(`Started monitoring wallet ${monitor.name} (${monitor.address}) on ${network}`)
@@ -300,7 +312,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                       <ScrollArea className="h-64">
                         <div className="space-y-3">
                           {monitor.transactions
-                            .filter((tx) => tx.amount !== 0n)
+                            .slice()
                             .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
                             .map((tx) => (
                               <div key={tx.id} className="border rounded-lg p-3 space-y-2">
