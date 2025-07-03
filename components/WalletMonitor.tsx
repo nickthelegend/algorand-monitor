@@ -344,7 +344,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                                   <div className="flex gap-2">
                                     <Button size="sm" variant="ghost" asChild>
                                       <a
-                                        href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${tx.id}`}
+                                        href={`https://lora.algokit.io/${network === "mainnet" ? "mainnet" : "testnet"}/transaction/${tx.id}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                       >

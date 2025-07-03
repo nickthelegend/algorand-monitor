@@ -24,8 +24,10 @@ interface ContractMonitorConfig {
   methodSignatures: string[]
   isActive: boolean
   events: ContractEvent[]
+  transactions: Transaction[]
   frequencyInSeconds: number
   subscriber?: any
+  startTime?: Date
 }
 
 interface ContractEvent {
@@ -37,6 +39,14 @@ interface ContractEvent {
   args: any[]
   txnId: string
   appArgs?: Uint8Array[]
+}
+
+interface Transaction {
+  id: string
+  type: string
+  sender: string
+  timestamp: Date
+  fee: bigint
 }
 
 export default function ContractMonitor({ network, onMonitorCountChange }: ContractMonitorProps) {
@@ -65,6 +75,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
       methodSignatures: [],
       isActive: false,
       events: [],
+      transactions: [],
       frequencyInSeconds: Number.parseInt(frequency),
     }
 
@@ -95,10 +106,11 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
 
   const startContractMonitoring = useCallback(
     async (monitor: ContractMonitorConfig) => {
+      const monitorStartTime = new Date()
       try {
         const { AlgorandClient } = await import("@algorandfoundation/algokit-utils")
         const { AlgorandSubscriber } = await import("@algorandfoundation/algokit-subscriber")
-        const algosdk  = await import("algosdk")
+        const algosdk = await import("algosdk")
         const algorand =
           network === "mainnet"
             ? AlgorandClient.fromConfig({
@@ -122,59 +134,58 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
                 },
               })
 
-        const filters = [
-          {
-            name: "app-call-fallback",
-            filter: {
-              type: "appl",
-              appId: BigInt(monitor.appId),
-            },
-          },
-        ]
+        const fetchTransactions = async () => {
+          try {
+            const response = await algorand.client.indexer
+              .searchForTransactions()
+              .applicationID(Number(monitor.appId))
+              .afterTime(monitorStartTime.toISOString())
+              .do()
 
-        const subscriber = new AlgorandSubscriber(
-          {
-            filters,
-            frequencyInSeconds: monitor.frequencyInSeconds,
-            maxRoundsToSync: 10,
-            syncBehaviour: "catchup-with-indexer",
-            watermarkPersistence: {
-              get: async () => watermarksRef.current.get(monitor.id) || 0n,
-              set: async (newWatermark) => {
-                watermarksRef.current.set(monitor.id, newWatermark)
-              },
-            },
-          },
-          algorand.client.algod,
-          algorand.client.indexer,
+            const newTransactions: Transaction[] = response.transactions.map((tx: any) => {
+              console.log("Parsing contract transaction:", tx)
+              return {
+                id: tx.id,
+                type: tx["txType"],
+                sender: tx.sender,
+                timestamp: new Date(tx["roundTime"] * 1000),
+                fee: tx.fee || 0n,
+              }
+            })
+
+            if (newTransactions.length > 0) {
+              setMonitors((prev) =>
+                prev.map((m) => {
+                  if (m.id === monitor.id) {
+                    const existingTxIds = new Set(m.transactions.map((t) => t.id))
+                    const uniqueNewTransactions = newTransactions.filter((t) => !existingTxIds.has(t.id))
+
+                    if (uniqueNewTransactions.length === 0) return m
+
+                    return {
+                      ...m,
+                      transactions: [...uniqueNewTransactions, ...m.transactions].slice(0, 100),
+                    }
+                  }
+                  return m
+                }),
+              )
+            }
+          } catch (error) {
+            console.error(`Failed to fetch transactions for ${monitor.name}:`, error)
+          }
+        }
+
+        fetchTransactions()
+        const intervalId = setInterval(fetchTransactions, monitor.frequencyInSeconds * 1000)
+
+        setMonitors((prev) =>
+          prev.map((m) =>
+            m.id === monitor.id
+              ? { ...m, isActive: true, startTime: monitorStartTime, subscriber: intervalId }
+              : m,
+          ),
         )
-
-        subscriber.onBatch("app-call-fallback", async (events) => {
-          events.forEach((event) => {
-            console.log("Contract event received:", event);
-            const newEvent: ContractEvent = {
-              id: event.id,
-              eventName: "app-call",
-              methodSignature: "fallback",
-              sender: event.sender,
-              timestamp: event.roundTime ? new Date(event.roundTime * 1000) : new Date(),
-              args: event.applicationTransaction?.applicationArgs || [],
-              txnId: event.id,
-              appArgs: event.applicationTransaction?.applicationArgs,
-            };
-            setMonitors((prev) =>
-              prev.map((m) => (m.id === monitor.id ? { ...m, events: [newEvent, ...m.events.slice(0, 49)] } : m)),
-            );
-          });
-        })
-
-        subscriber.onError((e: any) => {
-          console.error(`Contract monitor error for ${monitor.name}:`, e)
-        })
-
-        await subscriber.start()
-
-        setMonitors((prev) => prev.map((m) => (m.id === monitor.id ? { ...m, subscriber } : m)))
 
         console.log(`Started monitoring contract ${monitor.name} (${monitor.appId}) on ${network}`)
       } catch (error) {
@@ -186,7 +197,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
 
   const stopContractMonitoring = useCallback((monitor: ContractMonitorConfig) => {
     if (monitor.subscriber) {
-      monitor.subscriber.stop()
+      clearInterval(monitor.subscriber)
       console.log(`Stopped monitoring ${monitor.name}`)
     }
   }, [])
@@ -195,7 +206,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
     (id: string) => {
       const monitor = monitors.find((m) => m.id === id)
       if (monitor?.subscriber) {
-        monitor.subscriber.stop()
+        clearInterval(monitor.subscriber)
       }
       watermarksRef.current.delete(id)
       setMonitors((prev) => prev.filter((m) => m.id !== id))
@@ -223,7 +234,7 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
     return () => {
       monitors.forEach((monitor) => {
         if (monitor.subscriber) {
-          monitor.subscriber.stop()
+          clearInterval(monitor.subscriber)
         }
       })
       watermarksRef.current.clear()
@@ -352,51 +363,37 @@ export default function ContractMonitor({ network, onMonitorCountChange }: Contr
                   {monitor.isActive && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-semibold">Recent Events</h4>
-                        <Badge variant="outline">{monitor.events.length} events</Badge>
+                        <h4 className="font-semibold">Recent Transactions</h4>
+                        <Badge variant="outline">{monitor.transactions.length} transactions</Badge>
                       </div>
 
-                      {monitor.events.length === 0 ? (
+                      {monitor.transactions.length === 0 ? (
                         <Alert>
                           <AlertCircle className="h-4 w-4" />
-                          <AlertDescription>Monitoring active. Waiting for contract events...</AlertDescription>
+                          <AlertDescription>Monitoring active. Waiting for transactions...</AlertDescription>
                         </Alert>
                       ) : (
                         <ScrollArea className="h-64">
                           <div className="space-y-3">
-                            {monitor.events
+                            {monitor.transactions
+                              .slice()
                               .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-                              .map((event) => (
-                                <div key={event.id} className="border rounded-lg p-3 space-y-2">
+                              .map((tx) => (
+                                <div key={tx.id} className="border rounded-lg p-3 space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <Badge variant="default">{event.eventName}</Badge>
-                                    <span className="text-sm text-slate-500">{event.timestamp.toLocaleTimeString()}</span>
+                                    <Badge variant="outline">{tx.type}</Badge>
+                                    <span className="text-sm text-slate-500">{tx.timestamp.toUTCString()}</span>
                                   </div>
-                                  <div className="space-y-1">
-                                    <p className="text-sm">
-                                      <span className="text-slate-600 dark:text-slate-400">Method:</span>
-                                      <code className="ml-2 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">
-                                        {event.methodSignature}
-                                      </code>
-                                    </p>
-                                    <p className="text-sm">
-                                      <span className="text-slate-600 dark:text-slate-400">Sender:</span>
-                                      <span className="ml-2 font-mono text-xs">{formatAddress(event.sender)}</span>
-                                    </p>
-                                    {event.appArgs && event.appArgs.length > 0 && (
-                                      <p className="text-sm">
-                                        <span className="text-slate-600 dark:text-slate-400">Args:</span>
-                                        <code className="ml-2 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">
-                                          [{formatArgs(event.appArgs).join(", ")}]
-                                        </code>
-                                      </p>
-                                    )}
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-slate-600 dark:text-slate-400">From:</p>
+                                      <p className="font-mono">{formatAddress(tx.sender)}</p>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-500 font-mono">{event.txnId}</span>
+                                  <div className="flex items-center justify-between gap-2">
                                     <Button size="sm" variant="ghost" asChild>
                                       <a
-                                        href={`https://${network === "mainnet" ? "" : "testnet."}algoexplorer.io/tx/${event.txnId}`}
+                                        href={`https://lora.algokit.io/${network === "mainnet" ? "mainnet" : "testnet"}/transaction/${tx.id}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                       >
