@@ -189,15 +189,15 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
     return `${address.slice(0, 6)}...${address.slice(-6)}`
   }
 
-  const formatAmount = (amount: bigint, assetId?: bigint) => {
-    // This is a simplification. In a real app, you'd want to fetch asset decimals.
-    const decimals = 6 // Assuming 6 decimals for both ALGO and assets for simplicity
+  const formatAmount = (amount: bigint, assetId?: bigint, txType?: string) => {
+    if (txType === "Asset Transfer") {
+      return `${amount.toString()} (Asset ID: ${assetId})`
+    }
+
+    const decimals = 6 // ALGO has 6 decimals
     const divisor = 10 ** decimals
     const formattedAmount = parseFloat((Number(amount) / divisor).toFixed(decimals)).toString()
 
-    if (assetId) {
-      return `${formattedAmount} (Asset ID: ${assetId})`
-    }
     return `${formattedAmount} ALGO`
   }
 
@@ -340,7 +340,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                                   </div>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="font-semibold">{formatAmount(tx.amount, tx.assetId)}</span>
+                                  <span className="font-semibold">{formatAmount(tx.amount, tx.assetId, tx.type)}</span>
                                   <div className="flex gap-2">
                                     <Button size="sm" variant="ghost" asChild>
                                       <a
