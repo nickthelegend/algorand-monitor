@@ -101,21 +101,22 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
           .do()
 
         const newTransactions: Transaction[] = response.transactions.map((tx: any) => {
-          const txDetails = tx["payment-transaction"] || tx["asset-transfer-transaction"] || {}
+          console.log("Parsing transaction:", tx)
+          const txDetails = tx["paymentTransaction"] || tx["assetTransferTransaction"] || {}
           return {
             id: tx.id,
             type:
-              tx["tx-type"] === "pay"
+              tx["txType"] === "pay"
                 ? "Payment"
-                : tx["tx-type"] === "axfer"
+                : tx["txType"] === "axfer"
                 ? "Asset Transfer"
-                : tx["tx-type"],
+                : tx["txType"],
             amount: txDetails.amount || 0n,
             sender: tx.sender,
             receiver: txDetails.receiver || "",
-            timestamp: tx["round-time"] ? new Date(tx["round-time"] * 1000) : new Date(0),
+            timestamp: tx["roundTime"] ? new Date(tx["roundTime"] * 1000) : new Date(0),
             fee: tx.fee || 0n,
-            assetId: tx["asset-transfer-transaction"]?.["asset-id"],
+            assetId: tx["assetTransferTransaction"]?.["assetId"],
           }
         })
 
@@ -184,14 +185,20 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
   }, [])
 
   const formatAddress = (address: string) => {
+    if (!address) return "N/A"
     return `${address.slice(0, 6)}...${address.slice(-6)}`
   }
 
   const formatAmount = (amount: bigint, assetId?: bigint) => {
     // This is a simplification. In a real app, you'd want to fetch asset decimals.
-    const decimals = assetId ? 6 : 6
+    const decimals = 6 // Assuming 6 decimals for both ALGO and assets for simplicity
     const divisor = 10 ** decimals
-    return (Number(amount) / divisor).toFixed(decimals) + (assetId ? "" : " ALGO")
+    const formattedAmount = parseFloat((Number(amount) / divisor).toFixed(decimals)).toString()
+
+    if (assetId) {
+      return `${formattedAmount} (Asset ID: ${assetId})`
+    }
+    return `${formattedAmount} ALGO`
   }
 
   useEffect(() => {
@@ -320,7 +327,7 @@ export default function WalletMonitor({ network, onMonitorCountChange }: WalletM
                               <div key={tx.id} className="border rounded-lg p-3 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Badge variant="outline">{tx.type}</Badge>
-                                  <span className="text-sm text-slate-500">{tx.timestamp.toLocaleString()}</span>
+                                  <span className="text-sm text-slate-500">{tx.timestamp.toUTCString()}</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                   <div>
