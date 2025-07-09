@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AlertCircle, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import algosdk from "algosdk"
 
 interface AssetMonitorProps {
@@ -26,6 +27,7 @@ interface Asset {
     creator: string
     decimals: number
   }
+  creationTime?: Date
 }
 
 interface AssetCreationStats {
@@ -40,6 +42,7 @@ interface AddressMonitor {
   address: string
   assets: Asset[]
   creationStats?: AssetCreationStats
+  assetsWithTime?: Asset[]
   isLoading: boolean
   error?: string
 }
@@ -53,7 +56,7 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
   }, [monitors.length, onMonitorCountChange])
 
   const fetchAssetCreationStats = useCallback(
-    async (assets: Asset[], indexerClient: any): Promise<AssetCreationStats> => {
+    async (assets: Asset[], indexerClient: any): Promise<{ stats: AssetCreationStats; assetsWithTime: Asset[] }> => {
       const now = new Date()
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -63,6 +66,7 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
       let monthly = 0
       let yearly = 0
       let total = 0
+      const assetsWithTime: Asset[] = []
 
       for (const asset of assets) {
         try {
@@ -72,21 +76,38 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
             .txType("acfg")
             .limit(2)
             .do()
-
+          console.log(response)
           if (response.transactions && response.transactions.length > 0) {
-            const creationTime = new Date(response.transactions[0]["round-time"] * 1000)
-            total++
+            const tx = response.transactions[0];
+            const roundTimeRaw = tx["roundTime"];
+            if (typeof roundTimeRaw === 'number' && !isNaN(roundTimeRaw)) {
+              const creationTime = new Date(roundTimeRaw * 1000);
+              console.log(`Asset ${assetId} created at:`, creationTime);
+              
+              const assetWithTime = { ...asset, creationTime }
+              assetsWithTime.push(assetWithTime)
+              total++
 
-            if (creationTime >= oneWeekAgo) weekly++
-            if (creationTime >= oneMonthAgo) monthly++
-            if (creationTime >= oneYearAgo) yearly++
+              if (creationTime >= oneWeekAgo) weekly++
+              if (creationTime >= oneMonthAgo) monthly++
+              if (creationTime >= oneYearAgo) yearly++
+            } else {
+              console.warn(`Asset ${assetId} has invalid or missing round-time. Transaction object:`, tx);
+              assetsWithTime.push(asset) // Add without creation time
+            }
+          } else {
+            assetsWithTime.push(asset) // Add without creation time
           }
         } catch (error) {
           console.error(`Failed to fetch creation time for asset ${asset.index}:`, error)
+          assetsWithTime.push(asset) // Add without creation time
         }
       }
 
-      return { weekly, monthly, yearly, total }
+      return { 
+        stats: { weekly, monthly, yearly, total },
+        assetsWithTime 
+      }
     },
     [],
   )
@@ -138,10 +159,10 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
         }))
 
         // Fetch creation statistics
-        const creationStats = await fetchAssetCreationStats(assets, indexerClient)
+        const { stats: creationStats, assetsWithTime } = await fetchAssetCreationStats(assets, indexerClient)
         
         setMonitors((prev) =>
-          prev.map((m) => (m.id === monitorId ? { ...m, assets, creationStats, isLoading: false } : m)),
+          prev.map((m) => (m.id === monitorId ? { ...m, assets, creationStats, assetsWithTime, isLoading: false } : m)),
         )
       } catch (error: any) {
         console.error(`Failed to fetch assets for ${address}:`, error)
@@ -184,6 +205,80 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     })
+  }
+
+  const AssetList = ({ assets, network }: { assets: Asset[], network: "mainnet" | "testnet" }) => {
+    if (assets.length === 0) {
+      return (
+        <div className="text-center py-8 text-slate-500">
+          No assets found in this time period.
+        </div>
+      )
+    }
+
+    return (
+      <ScrollArea className="h-80">
+        <div className="space-y-4">
+          {assets.map((asset) => (
+            <div key={asset.index} className="border rounded-lg p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold text-lg">
+                    {asset.params.name || "Unnamed Asset"}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {asset.params["unit-name"]}
+                  </p>
+                  {asset.creationTime && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      Created: {asset.creationTime.toLocaleDateString()} at {asset.creationTime.toLocaleTimeString()}
+                    </p>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" asChild>
+                  <a
+                    href={`https://${
+                      network === "mainnet" ? "" : "testnet."
+                    }algoexplorer.io/asset/${asset.index}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
+                <div>
+                  <p className="text-slate-600 dark:text-slate-400">Asset ID:</p>
+                  <p className="font-mono">{asset.index}</p>
+                </div>
+                <div>
+                  <p className="text-slate-600 dark:text-slate-400">Total Supply:</p>
+                  <p>
+                    {formatAmount(Number(asset.params.total), asset.params.decimals)}
+                  </p>
+                </div>
+              </div>
+              {asset.params.url && (
+                <div className="mt-2">
+                  <p className="text-slate-600 dark:text-slate-400 text-sm">
+                    URL:
+                  </p>
+                  <a
+                    href={asset.params.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-500 hover:underline break-all"
+                  >
+                    {asset.params.url}
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    )
   }
 
   return (
@@ -352,36 +447,58 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
                 </CardContent>
               )}
 
-              {!monitor.isLoading && !monitor.error && monitor.creationStats && (
+              {!monitor.isLoading && !monitor.error && monitor.creationStats && monitor.assetsWithTime && (
                 <CardContent>
                   <div className="border-t pt-4">
-                    <h3 className="text-lg font-semibold mb-4">Asset Creation Statistics</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          {monitor.creationStats.weekly}
-                        </div>
-                        <div className="text-sm text-blue-600 dark:text-blue-400">This Week</div>
-                      </div>
-                      <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                          {monitor.creationStats.monthly}
-                        </div>
-                        <div className="text-sm text-green-600 dark:text-green-400">This Month</div>
-                      </div>
-                      <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
-                        <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                          {monitor.creationStats.yearly}
-                        </div>
-                        <div className="text-sm text-purple-600 dark:text-purple-400">This Year</div>
-                      </div>
-                      <div className="text-center p-3 bg-orange-50 dark:bg-orange-950 rounded-lg">
-                        <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                          {monitor.creationStats.total}
-                        </div>
-                        <div className="text-sm text-orange-600 dark:text-orange-400">Total</div>
-                      </div>
-                    </div>
+                    <h3 className="text-lg font-semibold mb-4">Asset Creation Timeline</h3>
+                    <Tabs defaultValue="week" className="w-full">
+                      <TabsList className="grid w-full grid-cols-4">
+                        <TabsTrigger value="week">Week ({monitor.creationStats.weekly})</TabsTrigger>
+                        <TabsTrigger value="month">Month ({monitor.creationStats.monthly})</TabsTrigger>
+                        <TabsTrigger value="year">Year ({monitor.creationStats.yearly})</TabsTrigger>
+                        <TabsTrigger value="all">All ({monitor.creationStats.total})</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="week" className="mt-4">
+                        <AssetList 
+                          assets={monitor.assetsWithTime.filter(asset => {
+                            if (!asset.creationTime) return false
+                            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                            return asset.creationTime >= oneWeekAgo
+                          })}
+                          network={network}
+                        />
+                      </TabsContent>
+                      
+                      <TabsContent value="month" className="mt-4">
+                        <AssetList 
+                          assets={monitor.assetsWithTime.filter(asset => {
+                            if (!asset.creationTime) return false
+                            const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+                            return asset.creationTime >= oneMonthAgo
+                          })}
+                          network={network}
+                        />
+                      </TabsContent>
+                      
+                      <TabsContent value="year" className="mt-4">
+                        <AssetList 
+                          assets={monitor.assetsWithTime.filter(asset => {
+                            if (!asset.creationTime) return false
+                            const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+                            return asset.creationTime >= oneYearAgo
+                          })}
+                          network={network}
+                        />
+                      </TabsContent>
+                      
+                      <TabsContent value="all" className="mt-4">
+                        <AssetList 
+                          assets={monitor.assetsWithTime}
+                          network={network}
+                        />
+                      </TabsContent>
+                    </Tabs>
                   </div>
                 </CardContent>
               )}
