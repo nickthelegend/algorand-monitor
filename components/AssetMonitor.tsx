@@ -17,21 +17,29 @@ interface AssetMonitorProps {
 }
 
 interface Asset {
-  index: number
+  index: number | bigint
   params: {
     name: string
     "unit-name": string
-    total: number
+    total: number | bigint
     url: string
     creator: string
     decimals: number
   }
 }
 
+interface AssetCreationStats {
+  weekly: number
+  monthly: number
+  yearly: number
+  total: number
+}
+
 interface AddressMonitor {
   id: string
   address: string
   assets: Asset[]
+  creationStats?: AssetCreationStats
   isLoading: boolean
   error?: string
 }
@@ -43,6 +51,45 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
   useEffect(() => {
     onMonitorCountChange(monitors.length)
   }, [monitors.length, onMonitorCountChange])
+
+  const fetchAssetCreationStats = useCallback(
+    async (assets: Asset[], indexerClient: any): Promise<AssetCreationStats> => {
+      const now = new Date()
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+
+      let weekly = 0
+      let monthly = 0
+      let yearly = 0
+      let total = 0
+
+      for (const asset of assets) {
+        try {
+          const assetId = typeof asset.index === 'bigint' ? Number(asset.index) : asset.index
+          const response = await indexerClient
+            .lookupAssetTransactions(assetId)
+            .txType("acfg")
+            .limit(2)
+            .do()
+
+          if (response.transactions && response.transactions.length > 0) {
+            const creationTime = new Date(response.transactions[0]["round-time"] * 1000)
+            total++
+
+            if (creationTime >= oneWeekAgo) weekly++
+            if (creationTime >= oneMonthAgo) monthly++
+            if (creationTime >= oneYearAgo) yearly++
+          }
+        } catch (error) {
+          console.error(`Failed to fetch creation time for asset ${asset.index}:`, error)
+        }
+      }
+
+      return { weekly, monthly, yearly, total }
+    },
+    [],
+  )
 
   const refreshMonitor = useCallback(
     async (monitorId: string, address: string) => {
@@ -78,10 +125,23 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
 
         const indexerClient = algorand.client.indexer
         const response = await indexerClient.lookupAccountCreatedAssets(address).do()
-        const assets = response["created-assets"] || response.assets || []
+        const assets: Asset[] = (response.assets || []).map((asset: any) => ({
+          index: asset.index,
+          params: {
+            name: asset.params.name || "",
+            "unit-name": asset.params["unit-name"] || "",
+            total: asset.params.total,
+            url: asset.params.url || "",
+            creator: asset.params.creator,
+            decimals: asset.params.decimals,
+          },
+        }))
 
+        // Fetch creation statistics
+        const creationStats = await fetchAssetCreationStats(assets, indexerClient)
+        
         setMonitors((prev) =>
-          prev.map((m) => (m.id === monitorId ? { ...m, assets, isLoading: false } : m)),
+          prev.map((m) => (m.id === monitorId ? { ...m, assets, creationStats, isLoading: false } : m)),
         )
       } catch (error: any) {
         console.error(`Failed to fetch assets for ${address}:`, error)
@@ -94,7 +154,7 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
         )
       }
     },
-    [network],
+    [network, fetchAssetCreationStats],
   )
 
   const addMonitor = async () => {
@@ -289,6 +349,40 @@ export default function AssetMonitor({ network, onMonitorCountChange }: AssetMon
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>No assets created by this address.</AlertDescription>
                   </Alert>
+                </CardContent>
+              )}
+
+              {!monitor.isLoading && !monitor.error && monitor.creationStats && (
+                <CardContent>
+                  <div className="border-t pt-4">
+                    <h3 className="text-lg font-semibold mb-4">Asset Creation Statistics</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                          {monitor.creationStats.weekly}
+                        </div>
+                        <div className="text-sm text-blue-600 dark:text-blue-400">This Week</div>
+                      </div>
+                      <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                          {monitor.creationStats.monthly}
+                        </div>
+                        <div className="text-sm text-green-600 dark:text-green-400">This Month</div>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
+                        <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                          {monitor.creationStats.yearly}
+                        </div>
+                        <div className="text-sm text-purple-600 dark:text-purple-400">This Year</div>
+                      </div>
+                      <div className="text-center p-3 bg-orange-50 dark:bg-orange-950 rounded-lg">
+                        <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                          {monitor.creationStats.total}
+                        </div>
+                        <div className="text-sm text-orange-600 dark:text-orange-400">Total</div>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               )}
             </Card>

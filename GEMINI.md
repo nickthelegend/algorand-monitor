@@ -1,83 +1,345 @@
-const response = await indexerClient
-      .lookupAccountCreatedAssets(addr)
-      .do();
-
-    const assets = response['created-assets'] || response.assets || [];
-    console.log(`Total assets created by ${addr}:`, assets.length);
 
 
-    {
-  "assets": [
-    {
-      "created-at-round": 46616570,
-      "deleted": false,
-      "index": 2724542844,
-      "params": {
-        "clawback": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "creator": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "decimals": 0,
-        "default-frozen": false,
-        "freeze": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "manager": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "name": "GONNA 1",
-        "name-b64": "R09OTkEgMQ==",
-        "reserve": "V3L7FMKTZFJVM2FIJCVLEOJAZHEWFGJRJ3YZHB66BTA6FW5JWL57LCCH3I",
-        "total": 1,
-        "unit-name": "GONNA1",
-        "unit-name-b64": "R09OTkEx",
-        "url": "template-ipfs://{ipfscid:1:raw:reserve:sha2-256}",
-        "url-b64": "dGVtcGxhdGUtaXBmczovL3tpcGZzY2lkOjE6cmF3OnJlc2VydmU6c2hhMi0yNTZ9"
-      }
-    },
-    {
-      "created-at-round": 46616570,
-      "deleted": false,
-      "index": 2724542846,
-      "params": {
-        "clawback": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "creator": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "decimals": 0,
-        "default-frozen": false,
-        "freeze": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "manager": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "name": "GONNA 2",
-        "name-b64": "R09OTkEgMg==",
-        "reserve": "OKS6QGBHYLCCMQLMG7UENYLM3HQUVWQKE6GR72I47SIJ47UGUO7UMREUUI",
-        "total": 1,
-        "unit-name": "GONNA2",
-        "unit-name-b64": "R09OTkEy",
-        "url": "template-ipfs://{ipfscid:1:raw:reserve:sha2-256}",
-        "url-b64": "dGVtcGxhdGUtaXBmczovL3tpcGZzY2lkOjE6cmF3OnJlc2VydmU6c2hhMi0yNTZ9"
-      }
-    },
-    {
-      "created-at-round": 46616570,
-      "deleted": false,
-      "index": 2724542848,
-      "params": {
-        "clawback": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "creator": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "decimals": 0,
-        "default-frozen": false,
-        "freeze": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-        "manager": "GONHNV3XMSPTGZITI4PXUZGCMIELXHVADCJQPZKVCTXDNJZVIYDIEGKPHU",
-        "name": "GONNA 3",
-        "name-b64": "R09OTkEgMw==",
-        "reserve": "WYGMA2GWHQPU7UEPZCQOEGN6VILQDCNC27IWK3KKRGM7KUVMUT7Q3DN3WU",
-        "total": 1,
-        "unit-name": "GONNA3",
-        "unit-name-b64": "R09OTkEz",
-        "url": "template-ipfs://{ipfscid:1:raw:reserve:sha2-256}",
-        "url-b64": "dGVtcGxhdGUtaXBmczovL3tpcGZzY2lkOjE6cmF3OnJlc2VydmU6c2hhMi0yNTZ9"
-      }
-    },
-    ...
-  ],
-  "current-round": 51606450,
-  "next-token": "2740817906"
+    import JSONRequest from '../jsonrequest.js';
+import { HTTPClient, HTTPClientResponse } from '../../client.js';
+import { Address } from '../../../encoding/address.js';
+import { TransactionsResponse } from './models/types.js';
+export default class LookupAssetTransactions extends JSONRequest<TransactionsResponse> {
+    private index;
+    /**
+     * Returns transactions relating to the given asset.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient.lookupAssetTransactions(assetId).do();
+     * ```
+     *
+     * [Response data schema details](https://developer.algorand.org/docs/rest-apis/indexer/#get-v2assetsasset-idtransactions)
+     * @param index - The asset ID to look up.
+     */
+    constructor(c: HTTPClient, index: number | bigint);
+    /**
+     * @returns `/v2/assets/${index}/transactions`
+     */
+    path(): string;
+    /**
+     * Specifies a prefix which must be contained in the note field.
+     *
+     * #### Example
+     * ```typescript
+     * const notePrefixBase64Encoded = "Y3JlYXRl";
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .notePrefix(notePrefixBase64Encoded)
+     *        .do();
+     * ```
+     *
+     * @param prefix - base64 string or uint8array
+     * @category query
+     */
+    notePrefix(prefix: Uint8Array | string): this;
+    /**
+     * Type of transaction to filter with.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .txType("axfer")
+     *        .do();
+     * ```
+     *
+     * @param type - one of `pay`, `keyreg`, `acfg`, `axfer`, `afrz`, `appl`
+     * @category query
+     */
+    txType(type: string): this;
+    /**
+     * Type of signature to filter with.
+     * - sig: Standard
+     * - msig: MultiSig
+     * - lsig: LogicSig
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .sigType("lsig")
+     *        .do();
+     * ```
+     *
+     * @param type - one of `sig`, `msig`, `lsig`
+     * @category query
+     */
+    sigType(type: string): this;
+    /**
+     * Lookup the specific transaction by ID.
+     *
+     * #### Example
+     * ```typescript
+     * const txId = "MEUOC4RQJB23CQZRFRKYEI6WBO73VTTPST5A7B3S5OKBUY6LFUDA";
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .txid(txId)
+     *        .do();
+     * ```
+     *
+     * @param txid
+     * @category query
+     */
+    txid(txid: string): this;
+    /**
+     * Include results for the specified round.
+     *
+     * #### Example
+     * ```typescript
+     * const targetBlock = 18309917;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .round(targetBlock)
+     *        .do();
+     * ```
+     *
+     * @param round
+     * @category query
+     */
+    round(round: number | bigint): this;
+    /**
+     * Include results at or after the specified min-round.
+     *
+     * #### Example
+     * ```typescript
+     * const minRound = 18309917;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .minRound(minRound)
+     *        .do();
+     * ```
+     *
+     * @param round
+     * @category query
+     */
+    minRound(round: number | bigint): this;
+    /**
+     * Include results at or before the specified max-round.
+     *
+     * #### Example
+     * ```typescript
+     * const maxRound = 18309917;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .maxRound(maxRound)
+     *        .do();
+     * ```
+     *
+     * @param round
+     * @category query
+     */
+    maxRound(round: number | bigint): this;
+    /**
+     * Maximum number of results to return.
+     *
+     * #### Example
+     * ```typescript
+     * const maxResults = 25;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .limit(maxResults)
+     *        .do();
+     * ```
+     *
+     * @param limit
+     * @category query
+     */
+    limit(limit: number): this;
+    /**
+     * Include results before the given time.
+     *
+     * #### Example
+     * ```typescript
+     * const beforeTime = "2022-02-02T20:20:22.02Z";
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .beforeTime(beforeTime)
+     *        .do();
+     * ```
+     *
+     * @param before - rfc3339 string or Date object
+     * @category query
+     */
+    beforeTime(before: string | Date): this;
+    /**
+     * Include results after the given time.
+     *
+     * #### Example
+     * ```typescript
+     * const afterTime = "2022-10-21T00:00:11.55Z";
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .afterTime(afterTime)
+     *        .do();
+     * ```
+     *
+     * @param after - rfc3339 string or Date object
+     * @category query
+     */
+    afterTime(after: string | Date): this;
+    /**
+     * Filtered results should have an amount greater than this value, as int, representing asset units.
+     *
+     * #### Example
+     * ```typescript
+     * const minBalance = 300000;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .currencyGreaterThan(minBalance - 1)
+     *        .do();
+     * ```
+     *
+     * @param greater
+     * @category query
+     */
+    currencyGreaterThan(greater: number | bigint): this;
+    /**
+     * Filtered results should have an amount less than this value, as int, representing asset units.
+     *
+     * #### Example
+     * ```typescript
+     * const maxBalance = 500000;
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .currencyLessThan(maxBalance + 1)
+     *        .do();
+     * ```
+     *
+     * @param lesser
+     * @category query
+     */
+    currencyLessThan(lesser: number | bigint): this;
+    /**
+     * Combined with address, defines what address to filter on, as string.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const address = "XBYLS2E6YI6XXL5BWCAMOA4GTWHXWENZMX5UHXMRNWWUQ7BXCY5WC5TEPA";
+     * const role = "sender";
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .address(address)
+     *        .addressRole(role)
+     *        .do();
+     * ```
+     *
+     * @param role - one of `sender`, `receiver`, `freeze-target`
+     * @category query
+     */
+    addressRole(role: string): this;
+    /**
+     * Only include transactions with this address in one of the transaction fields.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const address = "XBYLS2E6YI6XXL5BWCAMOA4GTWHXWENZMX5UHXMRNWWUQ7BXCY5WC5TEPA";
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .address(address)
+     *        .do();
+     * ```
+     *
+     * @param address
+     * @category query
+     */
+    address(address: string | Address): this;
+    /**
+     * Whether or not to consider the `close-to` field as a receiver when filtering transactions, as bool. Set to `true` to ignore `close-to`.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .excludeCloseTo(true)
+     *        .do();
+     * ```
+     *
+     * @param exclude
+     * @category query
+     */
+    excludeCloseTo(exclude: boolean): this;
+    /**
+     * The next page of results.
+     *
+     * #### Example
+     * ```typescript
+     * const maxResults = 25;
+     * const assetId = 163650;
+     *
+     * const assetTxnsPage1 = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .limit(maxResults)
+     *        .do();
+     *
+     * const assetTxnsPage2 = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .limit(maxResults)
+     *        .nextToken(assetTxnsPage1["next-token"])
+     *        .do();
+     * ```
+     *
+     * @param nextToken - provided by the previous results.
+     * @category query
+     */
+    nextToken(nextToken: string): this;
+    /**
+     * Whether or not to include rekeying transactions.
+     *
+     * #### Example
+     * ```typescript
+     * const assetId = 163650;
+     * const assetTxns = await indexerClient
+     *        .lookupAssetTransactions(assetId)
+     *        .rekeyTo(false)
+     *        .do();
+     * ```
+     *
+     * @param rekeyTo
+     * @category query
+     */
+    rekeyTo(rekeyTo: boolean): this;
+    prepare(response: HTTPClientResponse): TransactionsResponse;
 }
 
-this is an example output
+The above is how to use the lookupAssetTransactions
 
-just list them in the asset output
 
+const response = await indexerClient
+      .lookupAssetTransactions(assetID)
+      .do();
+
+now you listed all the assets
+
+
+now i want you to do .before ( ) / after() and only use txType = acfg  which is created application and fetch the [round-time] which fetches the creation of asset also limit them to 2 
+
+so now you listed all the assets with asset-id , now i want anohter screen in the Asset monitor itself
+
+How many of each token were created per week, month, year, and in total? it should solve this ... so i will have to fetch the assets.. then i will have to fetch the transactions of the asset and get the round-time which is the creation of the asset 
+
+
+so i should solve the problem dont remove the found assets.. i want to add the how many assets are created per week and month and year after the found assets... 
+
+i want the 
