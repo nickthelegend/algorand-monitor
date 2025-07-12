@@ -5,10 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Wallet, FileCodeIcon as FileContract, Coins, Globe } from "lucide-react"
+import { Activity, Wallet, FileCodeIcon as FileContract, Coins, Globe, UserPlus } from "lucide-react"
 import WalletMonitor from "../components/WalletMonitor"
 import ContractMonitor from "../components/ContractMonitor"
 import AssetMonitor from "../components/AssetMonitor"
+import NewAccountMonitor from "../components/NewAccountMonitor"
 import { ChartContainer } from "@/components/ui/chart"
 import * as RechartsPrimitive from "recharts"
 
@@ -116,7 +117,7 @@ export default function AlgorandMonitorDashboard() {
         </div>
 
         <Tabs defaultValue="wallet" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="wallet" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
               Wallet Monitor
@@ -129,7 +130,10 @@ export default function AlgorandMonitorDashboard() {
               <Coins className="h-4 w-4" />
               Asset Monitor
             </TabsTrigger>
-            
+            <TabsTrigger value="new-account" className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                New Account Monitor
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="wallet">
@@ -143,8 +147,9 @@ export default function AlgorandMonitorDashboard() {
           <TabsContent value="asset">
             <AssetMonitor network={network} onMonitorCountChange={handleAssetMonitorCountChange} />
           </TabsContent>
-
-          
+          <TabsContent value="new-account">
+            <NewAccountMonitor network={network} />
+          </TabsContent>
         </Tabs>
       </div>
     </div>
