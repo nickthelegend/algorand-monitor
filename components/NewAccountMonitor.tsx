@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy } from 'lucide-react';
+import { Copy, ExternalLink } from 'lucide-react';
 import algosdk from 'algosdk';
 
 const NewAccountMonitor = ({ network }: { network: 'mainnet' | 'testnet' }) => {
@@ -57,7 +57,7 @@ const NewAccountMonitor = ({ network }: { network: 'mainnet' | 'testnet' }) => {
         .txType('pay')
         .afterTime(monitorStartTime.toISOString())
         .do();
-      console.log(response)
+
       const accounts = new Set<string>();
       response.transactions.forEach((tx: any) => {
         if (tx['paymentTransaction'] && tx['paymentTransaction'].receiver) {
@@ -115,7 +115,15 @@ const NewAccountMonitor = ({ network }: { network: 'mainnet' | 'testnet' }) => {
             <h4 className="font-semibold mt-4">Receiver Addresses:</h4>
             <ul className="list-disc pl-5 mt-2 max-h-48 overflow-y-auto">
               {interactedAccounts.map((acc, index) => (
-                <li key={index} className="font-mono text-sm flex items-center justify-between">{acc} <Button variant="ghost" size="icon" onClick={() => navigator.clipboard.writeText(acc)}><Copy className="h-4 w-4" /></Button></li>
+                <li key={index} className="font-mono text-sm flex items-center justify-between">
+                  <a href={`https://lora.algokit.io/mainnet/account/${acc}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{acc}</a>
+                  <div>
+                    <Button variant="ghost" size="icon" onClick={() => navigator.clipboard.writeText(acc)}><Copy className="h-4 w-4" /></Button>
+                    <a href={`https://lora.algokit.io/mainnet/account/${acc}`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="icon"><ExternalLink className="h-4 w-4" /></Button>
+                    </a>
+                  </div>
+                </li>
               ))}
             </ul>
           </div>
